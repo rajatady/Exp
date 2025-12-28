@@ -279,8 +279,31 @@ This doesn't falsify the theory. It means:
 
 **Next**: Try different task or different inner learning rule.
 
+### Experiment 1b: Inner Learning with Transformer Baseline (test_inner_learning_v2.py)
+
+**Fixed confounds**:
+- Using Transformer as baseline (not MLP)
+- Analyzing HOW each model solves the task
+
+**Results (hard test, 75% masked)**:
+| Model | Accuracy |
+|-------|----------|
+| Transformer | 54.0% |
+| +Dynamics | 55.2% (+1.2%) |
+| +Hebbian | 49.2% (-4.8%) |
+
+**Analysis of internal mechanisms**:
+- Dynamics: State changes by constant ~4.0 each tick (not settling/converging)
+- Hebbian: Weight changes happening but hurting performance
+
+**Interpretation**:
+- Task may be wrong (pattern completion doesn't require iteration)
+- Dynamics not settling = not doing useful refinement
+- Hebbian interferes with what backprop learned
+
 ---
 
 ## Version History
 - v1 (2025-12-28): Initial capture of theory and discussion
 - v2 (2025-12-28): Added Experiment 1 (inner learning) - negative result
+- v3 (2025-12-28): Added Experiment 1b with Transformer baseline - still negative
