@@ -129,6 +129,7 @@ From `test_variant_a.py`:
 | test_all_task_classes.py | 6 different tasks | CTM hurts counting (-15.7%) |
 | test_variant_a.py | Fuller vs simpler history | No difference |
 | test_weight_sharing.py | Shared vs unrolled weights | Unrolling helps counting |
+| test_real_ctm.py | Real CTM implementation | Sync-as-representation hurts on lookup tasks |
 
 ---
 
@@ -144,31 +145,90 @@ From `test_variant_a.py`:
 
 ---
 
+## Real CTM Implementation (test_real_ctm.py)
+
+### What We Implemented
+
+```python
+class RealCTM:
+    # Per-neuron NLMs: Each neuron d has private MLP
+    self.nlms = [NeuronLevelModel() for d in range(hidden_dim)]
+
+    # Synapse model: a_t = f_θ_syn(concat(z_t, input))
+    self.synapse = MLP(2*hidden_dim, hidden_dim)
+
+    # Sync as representation: S = Z · Z^T
+    def compute_sync_features(Z, pairs):
+        return [(Z[:,:,i] * Z[:,:,j]).sum(-1) for (i,j) in pairs]
+
+    # Output FROM sync: y = W_out · S_out
+    self.output_proj = Linear(n_sync_pairs, vocab_size)
+```
+
+### Results on Reversal Task
+
+| Model | Test Acc | Long (OOD) | Params |
+|-------|----------|------------|--------|
+| Standard Transformer | **100.0%** | 26.5% | 201,870 |
+| Simple Accumulator | **100.0%** | 21.7% | 101,902 |
+| Fake CTM | **100.0%** | 28.2% | 114,318 |
+| Real CTM | 76.8% | 20.0% | 50,254 |
+
+### Key Insight: Task-Architecture Match
+
+**Real CTM performs WORSE on reversal (76.8% vs 100%)**
+
+Why? Because reversal is a **lookup task**, not a **thinking task**:
+- Reversal just needs: "position i maps to position n-i"
+- This is a simple attention pattern, no "thinking" required
+- Standard transformer's attention is perfectly suited for this
+
+**CTM was designed for:**
+- Tasks requiring temporal dynamics (maze solving)
+- Tasks needing iterative refinement (image classification)
+- Tasks where "thinking over time" matters
+
+**Reversal does NOT require:**
+- Synchronization between neurons
+- Temporal evolution of representations
+- Multiple "thinking" steps
+
+### Conclusion
+
+Sync-as-representation doesn't help on simple lookup tasks.
+Need to test on tasks where CTM's temporal dynamics actually matter:
+1. Maze solving
+2. Multi-step reasoning
+3. Planning tasks
+
+---
+
 ## What We Still Don't Know
 
-1. **Why does real CTM's sync-as-representation work?**
-   - We never tested S = Z·Z^T as the actual representation
+1. ~~Why does real CTM's sync-as-representation work?~~
+   - **Tested**: It doesn't help on lookup tasks like reversal
+   - **Still unknown**: Does it help on "thinking" tasks?
 
-2. **What about per-neuron weights?**
-   - Real CTM has private MLPs per neuron, we used shared weights
+2. ~~What about per-neuron weights?~~
+   - **Tested**: Implemented NLMs with private MLPs
+   - **Finding**: They work but add complexity without helping reversal
 
 3. **Does the dual loss matter?**
    - argmin(loss) + argmax(certainty) - never tested
 
-4. **How does CTM perform on truly different task classes?**
-   - Not iterative refinement tasks
-   - Tasks where simple accumulation hurts
+4. **What tasks DOES Real CTM shine on?**
+   - Need to test on maze solving, planning, multi-step reasoning
 
 ---
 
 ## Next Steps
 
-### Option A: Implement Real CTM
-1. Create per-neuron private weights (NLMs)
-2. Build post-activation history Z
-3. Compute sync matrix S = Z·Z^T
-4. Route output through sync projection
-5. Add dual loss
+### Option A: Implement Real CTM ✓ DONE
+1. ✓ Create per-neuron private weights (NLMs)
+2. ✓ Build post-activation history Z
+3. ✓ Compute sync matrix S = Z·Z^T
+4. ✓ Route output through sync projection
+5. TODO: Add dual loss
 
 ### Option B: Extract Transferable Principles
 1. Why does synchronization matter?
