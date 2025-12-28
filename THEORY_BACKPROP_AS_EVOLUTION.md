@@ -301,9 +301,50 @@ This doesn't falsify the theory. It means:
 - Dynamics not settling = not doing useful refinement
 - Hebbian interferes with what backprop learned
 
+### Experiment 1c: Meta-Learned Rule (test_inner_learning_v3.py)
+
+Let backprop learn the inner rule (meta-learning approach).
+
+**Results**:
+| Model | Accuracy |
+|-------|----------|
+| Transformer | 53.8% |
+| Learned Rule | 53.3% |
+
+Meta-learned rule beats hand-crafted Hebbian (53.3% > 49.2%), but doesn't beat baseline.
+
+### Experiment 1d: Data-Driven Rule (test_inner_learning_v4.py) ← BREAKTHROUGH
+
+**Key insight**: Don't hand-craft (Hebbian) or black-box learn (meta).
+Instead: **derive the rule from the DATA STRUCTURE**.
+
+The data: alternating patterns (70% flip, 30% repeat)
+The rule: neighbors suggest flipped values, blend with current prediction
+
+**Results**:
+| Model | Accuracy |
+|-------|----------|
+| Transformer | 55.3% |
+| **Data-driven consistency** | **61.3% (+6.0%)** |
+| Self-refinement | 50.8% |
+
+**Comparison of ALL approaches**:
+| Approach | Accuracy |
+|----------|----------|
+| Hand-crafted Hebbian | 49.2% |
+| Meta-learned rule | 53.3% |
+| Baseline (no inner) | 55.3% |
+| **Data-driven rule** | **61.3%** |
+
+**The principle**: The inner loop rule should emerge from understanding
+the structure of the problem, not from biological intuition (Hebbian)
+or blind meta-learning.
+
 ---
 
 ## Version History
 - v1 (2025-12-28): Initial capture of theory and discussion
 - v2 (2025-12-28): Added Experiment 1 (inner learning) - negative result
 - v3 (2025-12-28): Added Experiment 1b with Transformer baseline - still negative
+- v4 (2025-12-28): Added Experiment 1c (meta-learning) - slight improvement
+- v5 (2025-12-28): Added Experiment 1d (data-driven) - BREAKTHROUGH! +6% over baseline
