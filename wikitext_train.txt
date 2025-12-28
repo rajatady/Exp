@@ -1,0 +1,40 @@
+When you heat water it starts to boil and turns into steam.
+Sound travels through air as waves that vibrate molecules.
+Objects float in water when they are less dense than water.
+Light travels faster than sound through empty space.
+Gravity pulls objects toward the center of the Earth.
+Energy cannot be created or destroyed only transformed.
+Atoms are made of protons neutrons and electrons.
+Temperature measures the average kinetic energy of particles.
+Friction is a force that opposes motion between surfaces.
+Electricity flows through conductors like copper and silver.
+Magnets have north and south poles that attract or repel.
+Waves can be transverse or longitudinal depending on direction.
+Pressure equals force divided by area in physics.
+Momentum is the product of mass and velocity.
+Acceleration is the rate of change of velocity over time.
+Newton discovered that every action has an equal reaction.
+The sun provides energy through nuclear fusion reactions.
+Planets orbit the sun due to gravitational attraction.
+Heat transfers through conduction convection and radiation.
+Matter exists in solid liquid gas and plasma states.
+Electrons orbit the nucleus in discrete energy levels.
+Photons are particles of light with wave properties.
+Kinetic energy depends on mass and velocity squared.
+Potential energy is stored energy due to position.
+Work equals force times distance in the same direction.
+Power is the rate at which work is done.
+Frequency measures how many waves pass per second.
+Wavelength is the distance between wave peaks.
+Amplitude determines the intensity of a wave.
+Refraction bends light when it enters a new medium.
+Reflection bounces light off surfaces at equal angles.
+Diffraction spreads waves around obstacles and openings.
+Interference occurs when waves overlap constructively or destructively.
+Electric current is the flow of charged particles.
+Voltage is the potential difference between two points.
+Resistance opposes the flow of electric current.
+Capacitors store electrical energy in electric fields.
+Inductors store energy in magnetic fields.
+Transformers change voltage levels using electromagnetic induction.
+Semiconductors conduct electricity under certain conditions.
