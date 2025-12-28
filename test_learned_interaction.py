@@ -232,7 +232,7 @@ class TransformerBaseline(nn.Module):
 # TRAINING & EVALUATION
 # =============================================================================
 
-def train_model(model, train_data, n_epochs=200, lr=1e-3):
+def train_model(model, train_data, n_epochs=1000, lr=1e-3):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     for epoch in range(n_epochs):
         model.train()
