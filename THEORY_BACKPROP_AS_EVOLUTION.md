@@ -244,5 +244,43 @@ What WOULD we use? Options:
 
 ---
 
+## Experiments
+
+### Experiment 1: Inner Learning (test_inner_learning.py)
+
+**Setup**:
+- Task: Pattern completion (8 positions, 50-75% masked)
+- Models:
+  1. Standard: Forward pass only
+  2. Dynamics: State evolves over 4 ticks (like CTM)
+  3. Hebbian: Weights change at inference with `Δw = η * pre * post`
+
+**Results (hard test, 75% masked)**:
+| Model | Masked Accuracy |
+|-------|-----------------|
+| Standard | 61.7% |
+| Dynamics | 60.2% (-1.5%) |
+| Hebbian | 53.7% (-8.0%) |
+
+**Observation**: Neither dynamics nor Hebbian helped. Both hurt.
+
+**Known Confounds**:
+1. Task too simple (can be memorized)
+2. Hebbian rule too simplistic (no normalization, unstable)
+3. Hebbian LR arbitrary (0.01, not tuned)
+4. Not controlled for compute
+5. More params in dynamics/Hebbian models
+
+**Interpretation**:
+This doesn't falsify the theory. It means:
+- Either wrong task (pattern completion doesn't need "thinking")
+- Or wrong implementation of inner learning
+- Or the theory is wrong
+
+**Next**: Try different task or different inner learning rule.
+
+---
+
 ## Version History
 - v1 (2025-12-28): Initial capture of theory and discussion
+- v2 (2025-12-28): Added Experiment 1 (inner learning) - negative result
