@@ -377,13 +377,61 @@ The model must combine known primitives in NEW ways.
 
 ---
 
+## Critical Discovery: Multi-Pass Wins (test_alternative_hypothesis.py)
+
+### Hypothesis Testing
+
+We tested what component actually provides the benefit:
+
+| Model | Mean Accuracy | vs Standard |
+|-------|---------------|-------------|
+| Standard | 33.3% | baseline |
+| Input Pred Loss | 36.3% | +2.9% |
+| Inner Loop (Fixed) | 39.2% | +5.9% |
+| Inner Loop (Train Only) | 51.0% | +17.6% |
+| **Multi-Pass (4x)** | **60.3%** | **+27.0%** |
+
+### The Real Mechanism
+
+**Multi-Pass just reruns the encoder 4 times - no settling, no error, no input prediction:**
+```python
+for _ in range(4):
+    h = encoder(h)  # Just rerun!
+```
+
+**The benefit is NOT from:**
+- Input as ground truth ✗
+- Self-modification ✗
+- Settling dynamics ✗
+
+**The benefit IS from:**
+- Iterative refinement of representations ✓
+- Multiple passes through attention ✓
+- Shared weights reused across passes ✓
+
+This is the **looped transformer** mechanism, not the "inner loop with feedback" hypothesis.
+
+### Why Does This Help Compositional Generalization?
+
+Multiple attention passes allow:
+1. First pass: Recognize individual components (WALK, THRICE)
+2. Subsequent passes: Integrate components, resolve bindings
+3. Each pass refines the representation
+
+Novel combinations benefit because the model can iteratively figure out how components relate, rather than pattern-matching in one shot.
+
+---
+
 ## Updated Files
 
 | File | Purpose | Key Finding |
 |------|---------|-------------|
 | test_inner_loop.py | Inner loop hypothesis test | OOD generalization improves |
 | test_compositional_gen.py | Compositional generalization | Inner Loop helps |
-| test_compositional_gen_multi_seed.py | Multi-seed validation | **+3.8% avg, 4/5 wins** |
+| test_compositional_gen_multi_seed.py | Multi-seed validation | +3.8% avg, 4/5 wins |
+| analyze_seed_variance.py | Seed variance analysis | Error doesn't decrease in inner loop |
+| diagnose_inner_loop.py | Inner loop diagnostics | Re-running encoder undoes updates |
+| test_alternative_hypothesis.py | Alternative mechanisms | **Multi-Pass wins by +27%** |
 
 ---
 
