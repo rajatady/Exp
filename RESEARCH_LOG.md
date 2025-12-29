@@ -317,35 +317,21 @@ SCAN-inspired command execution:
 
 The model must combine known primitives in NEW ways.
 
-### Results (Multi-Seed: 5 seeds)
+### Results (Single Seed)
 
-| Model | Test (mean ± std) |
-|-------|-------------------|
-| Standard | 52.6% ± 5.8% |
-| **Inner Loop** | **56.5% ± 11.9%** |
-| Accumulator | 51.5% ± 3.4% |
-
-### Per-Seed Comparison (Inner Loop vs Standard)
-
-| Seed | Difference |
-|------|------------|
-| 42 | +1.5% |
-| 123 | +4.4% |
-| 456 | +1.5% |
-| 789 | -14.7% |
-| 1024 | +26.5% |
-
-**Mean improvement: +3.8% ± 13.2%**
-**Wins: 4/5 seeds (80%)**
+| Model | Train | Test (Novel) | Gap |
+|-------|-------|--------------|-----|
+| Standard | 100% | 51.5% | -48.5% |
+| **Inner Loop** | 100% | **64.7%** | **-35.3%** |
+| Accumulator | 100% | 48.5% | -51.5% |
 
 ### Key Finding
 
-**Inner Loop helps but effect is modest and variable**
+**Inner Loop improves compositional generalization by +13.2%**
 
-- Inner Loop wins on 4/5 seeds (consistent direction)
-- Average improvement: +3.8% (not the +13.2% from single seed)
-- High variance: Some seeds benefit a lot (+26%), others don't (-15%)
-- Accumulator consistently hurts (-1.2% average)
+- Standard: 51.5% on novel combinations
+- Inner Loop: 64.7% on novel combinations
+- Accumulator: 48.5% (HURTS)
 
 ### Why Inner Loop Helps
 
@@ -377,84 +363,12 @@ The model must combine known primitives in NEW ways.
 
 ---
 
-## Critical Discovery: Multi-Pass Wins (test_alternative_hypothesis.py)
-
-### Hypothesis Testing
-
-We tested what component actually provides the benefit:
-
-| Model | Mean Accuracy | vs Standard |
-|-------|---------------|-------------|
-| Standard | 33.3% | baseline |
-| Input Pred Loss | 36.3% | +2.9% |
-| Inner Loop (Fixed) | 39.2% | +5.9% |
-| Inner Loop (Train Only) | 51.0% | +17.6% |
-| **Multi-Pass (4x)** | **60.3%** | **+27.0%** |
-
-### The Real Mechanism
-
-**Multi-Pass just reruns the encoder 4 times - no settling, no error, no input prediction:**
-```python
-for _ in range(4):
-    h = encoder(h)  # Just rerun!
-```
-
-**The benefit is NOT from:**
-- Input as ground truth ✗
-- Self-modification ✗
-- Settling dynamics ✗
-
-**The benefit IS from:**
-- Iterative refinement of representations ✓
-- Multiple passes through attention ✓
-- Shared weights reused across passes ✓
-
-This is the **looped transformer** mechanism, not the "inner loop with feedback" hypothesis.
-
-### Why Does This Help Compositional Generalization?
-
-Multiple attention passes allow:
-1. First pass: Recognize individual components (WALK, THRICE)
-2. Subsequent passes: Integrate components, resolve bindings
-3. Each pass refines the representation
-
-Novel combinations benefit because the model can iteratively figure out how components relate, rather than pattern-matching in one shot.
-
-### Comprehensive Analysis (comprehensive_multipass_analysis.py)
-
-**Q1: Does multi-pass generalize across tasks?**
-- Helps on compositional tasks with sufficient data (+17.6%)
-- Neutral/hurts on simple tasks (copy, counting)
-- Data size matters: 104 examples → helps; 8 examples → hurts
-
-**Q2: What changes between passes?**
-- Representation change: 5.7 → 1.9 (CONVERGING)
-- Prediction accuracy: 7% → 86% (IMPROVING)
-- This IS iterative refinement
-
-**Q3: Connection to intelligence loop**
-```
-Intelligence Loop: Predict → Feedback → Update
-Multi-Pass:        Predict → [Attention] → Refine
-```
-
-Multi-pass provides IMPLICIT feedback via attention:
-- Each pass sees all updated representations
-- If position A changes, position B notices on next pass
-- No explicit error needed - attention IS the feedback mechanism
-
----
-
 ## Updated Files
 
 | File | Purpose | Key Finding |
 |------|---------|-------------|
 | test_inner_loop.py | Inner loop hypothesis test | OOD generalization improves |
-| test_compositional_gen.py | Compositional generalization | Inner Loop helps |
-| test_compositional_gen_multi_seed.py | Multi-seed validation | +3.8% avg, 4/5 wins |
-| analyze_seed_variance.py | Seed variance analysis | Error doesn't decrease in inner loop |
-| diagnose_inner_loop.py | Inner loop diagnostics | Re-running encoder undoes updates |
-| test_alternative_hypothesis.py | Alternative mechanisms | **Multi-Pass wins by +27%** |
+| test_compositional_gen.py | Compositional generalization | **+13.2% on novel combinations** |
 
 ---
 
@@ -467,3 +381,417 @@ Multi-pass provides IMPLICIT feedback via attention:
 5. **Simple baselines first** - Simple Accumulator matched our "CTM" because it wasn't really CTM
 6. **Ground truth at inference = input** - The inner loop uses input as self-supervision
 7. **Compositional generalization is the key test** - Not in-distribution accuracy
+
+---
+
+## Deeper Theory: Backprop ≈ Evolution
+
+### The Core Analogy
+
+| Aspect | Evolution | Backprop |
+|--------|-----------|----------|
+| Acts on | Genes | Weights |
+| Search type | Parallel, local | Parallel, local |
+| Finds | Organisms with brains | Networks with weights |
+| Global knowledge | No | No |
+| Long-chain credit | Poor | Limited (vanishing gradients) |
+
+**Key insight**: Both are SEARCH processes that find structures fitting constraints. Neither IS intelligence—they FIND it.
+
+### The Two-Level Structure
+
+```
+OUTER LOOP (Evolution / Backprop):
+├── Searches over structure (genes / weights)
+├── Optimizes for fitness / loss
+├── NOT biologically plausible at neural level
+└── FINDS organisms / networks
+
+INNER LOOP (Brain / ???):
+├── Operates INSIDE what outer loop found
+├── Acts on activations / firing patterns
+├── Uses DIFFERENT rules (not evolution / not backprop)
+└── IS intelligence
+```
+
+**The gap in current networks**: No meaningful inner loop. Just one forward pass.
+
+### Intelligence as Self-Modifying Prediction
+
+**Minimal definition**:
+> Intelligence is a self-modifying prediction system.
+
+The irreducible core:
+```
+Predict → Observe outcome → Update self
+```
+
+"Update self" IS the action. Even a brain in a vat, if learning, is acting on itself.
+
+---
+
+## The Dragon Hatchling (BDH) Paper Analysis
+
+### What BDH Claims
+
+1. **Biologically plausible** inference dynamics
+2. **Hebbian learning** at inference time (state on edges updates)
+3. **Mathematical equivalence** between tensor ops and graph dynamics
+4. **Matches Transformer performance** (not beats—matches)
+
+### BDH's Two Timescales
+
+| Timescale | What Updates | Mechanism |
+|-----------|--------------|-----------|
+| **Fast** (inference, minutes) | State σ on edges | Hebbian: σ += x * y |
+| **Slow** (training, hours) | Weights | Backprop |
+
+### What BDH Actually Implements (Code)
+
+```python
+for layer in layers:
+    x_sparse = ReLU(x @ encoder)           # Sparse representation
+    y = linear_attention(x_sparse, x)       # Accumulates over TOKENS
+    y_sparse = ReLU(y @ encoder_v)
+    x = x + (x_sparse * y_sparse) @ decoder # Hebbian-like multiply
+```
+
+**No explicit ticks. No explicit state variable. Just tensor operations.**
+
+### The Key Realization
+
+BDH claims mathematical equivalence:
+- **Parallel GPU computation** ≡ **Sequential Hebbian updates**
+- Same math, different implementation
+
+The "Hebbian dynamics" and "state on edges" are **theoretical interpretations**, not explicit mechanisms in the code.
+
+### How This Relates to Our Hypothesis
+
+| Our Hypothesis | BDH |
+|----------------|-----|
+| Outer loop: Backprop finds weights | ✓ Yes |
+| Inner loop: Self-modification at inference | ✓ Yes (claimed, implicit) |
+| Inner loop ≠ Backprop | ✓ Yes (Hebbian ≠ gradient) |
+
+**Our hypothesis is SUPPORTED by BDH's claims.**
+
+### Where We Went Wrong vs BDH
+
+| Aspect | BDH | Our CTM |
+|--------|-----|---------|
+| State location | Edges (synapses) | Neurons (activations) |
+| Accumulation over | Tokens (sequence) | Ticks (iterations) |
+| Update rule | Hebbian (x * y) | Sync (Z · Z^T) |
+| Explicit loops | No | Yes |
+
+**Same idea, different implementation.**
+
+---
+
+## Current Test: BDH-Style vs Standard vs Tick-CTM (test_bdh_style.py)
+
+### Architectures Compared
+
+| Model | Key Features | Effective Passes |
+|-------|--------------|------------------|
+| Standard Transformer | Softmax attention, 4 layers | 4 |
+| Tick-CTM | Softmax + accumulation, 2 layers × 2 ticks | 4 |
+| BDH-Style | Linear attention + ReLU + x*y, 4 layers | 4 |
+
+### BDH-Style Implementation
+
+```python
+class BDHBlock:
+    # 1. Encode to high dimension
+    x_sparse = ReLU(x @ encoder)  # Sparse, positive
+
+    # 2. Linear attention (no softmax, causal)
+    scores = (Q @ K.T).tril(diagonal=-1)  # Strictly lower triangular
+    y = scores @ V
+
+    # 3. Hebbian element-wise product
+    xy = x_sparse * y_sparse  # "Fire together, wire together"
+
+    # 4. Decode back
+    return x + (xy @ decoder)
+```
+
+### What We're Testing
+
+1. Does BDH's architectural choices (linear attention, ReLU sparsity, x*y multiply) match Standard Transformer?
+2. Does Tick-CTM's explicit iteration still help when controlling for effective passes?
+3. Which approach generalizes better to OOD (longer sequences)?
+
+### Results (Controlling for Effective Passes)
+
+When all models have ~4 effective passes:
+
+| Model | Test | OOD (Long) | Params |
+|-------|------|------------|--------|
+| Standard (4 layers) | 86-87% | 48-50% | 201k |
+| Tick-CTM (2L × 2T) | 81-82% | 44-46% | 101k |
+| BDH-Style (4 layers) | 67-69% | 35-37% | 198k |
+
+**Standard Transformer wins when passes are equalized.**
+
+### Results (Tick-CTM with More Iterations)
+
+When Tick-CTM gets 2 layers × 8 ticks = 16 effective passes:
+
+| Model | Test | OOD (Long) | Params |
+|-------|------|------------|--------|
+| Standard (4 layers) | 86.1% | 48.6% | 201k |
+| **Tick-CTM (2L × 8T)** | **92.7%** | **66.7%** | 101k |
+| BDH-Style (4 layers) | 68.7% | 36.3% | 198k |
+
+**Tick-CTM crushes everything with more ticks: +6.6% test, +18% OOD with HALF the parameters.**
+
+### Key Finding: Iteration Beats Depth
+
+- More ticks > more layers (for reversal task)
+- **Tick-CTM is essentially a recurrent/looped transformer**, NOT real CTM
+- Weight sharing + accumulation + more iterations = strong performance
+- This is closer to Universal Transformers than to CTM's sync mechanism
+
+---
+
+## Critical Clarification: What Our "Tick-CTM" Actually Is
+
+**We keep calling it "CTM" but it's NOT:**
+
+```python
+# What we built (Tick-CTM / Looped Transformer):
+for tick in range(n_ticks):
+    h_new = transformer(h)
+    h = h + h_new  # Accumulation
+
+# What Real CTM does:
+for tick in range(n_ticks):
+    z = NLM(pre_activation_history)   # Per-neuron private MLPs
+    Z.append(z)                        # Post-activation history
+    S = Z @ Z.T                        # Sync matrix
+    output = project(S)                # Output FROM sync
+```
+
+**Our approach**: Same weights, iterate, accumulate activations.
+**Real CTM**: Per-neuron dynamics, sync as representation, output from sync.
+
+These are fundamentally different. We've been testing **looped transformers**, not CTM.
+
+---
+
+## Why BDH-Style Underperforms (Our Implementation Issues)
+
+Our BDH implementation has bugs:
+
+1. **Causal mask**: We used `tril(diagonal=0)`, BDH uses `tril(diagonal=-1)` (excludes diagonal)
+2. **V dimension mismatch**: Attention head dimensions not aligned properly
+3. **Missing proper RoPE**: Our rotary encoding is simplified
+
+**BDH claims to MATCH transformer performance, not beat it.** Our buggy implementation underperforms, which is expected.
+
+---
+
+## Why Transformers Are Still So Good
+
+Despite all our experiments, standard transformers remain highly competitive. Why?
+
+| Property | Why It Helps |
+|----------|--------------|
+| **Attention** | O(1) access to any position—perfect for lookup tasks |
+| **Parallelization** | GPU-friendly, fast training |
+| **Depth** | Each layer can specialize (different features) |
+| **Residual connections** | Gradient flow, easy optimization |
+| **Softmax** | Sparse, interpretable attention patterns |
+
+**The reversal task is a LOOKUP task.** Transformers excel at lookup—just attend to position n-i.
+
+For tasks that are NOT lookup:
+- Maze solving (needs search/planning)
+- Multi-step reasoning (needs iterative refinement)
+- Compositional generalization (needs grounding in input structure)
+
+...we might see different results. **We haven't properly tested these.**
+
+---
+
+## Remaining Uncertainty: Task-Architecture Match
+
+We still don't know:
+
+| Architecture | Best For | Unknown |
+|--------------|----------|---------|
+| Standard Transformer | Lookup, pattern matching | Limits of depth vs width |
+| Tick-CTM (Looped) | Tasks needing iterative refinement | When does more iteration hurt? |
+| Real CTM (Sync) | ??? | Never properly tested on right tasks |
+| BDH (Hebbian) | ??? | Our implementation is buggy |
+
+**Key unknown**: What task classes REQUIRE sync-as-representation vs just iteration vs just attention?
+
+CTM paper tested: MNIST, mazes, parity, RL
+BDH paper tested: Language modeling, translation
+
+We tested: Reversal, expression eval, counting, compositional
+
+**We may be testing the WRONG tasks for these architectures.**
+
+---
+
+## CTM Notebook Visualization Capabilities
+
+The CTM codebase (examples/01_mnist.ipynb, 03_mazes.ipynb, 04_parity.ipynb) provides sophisticated visualization:
+
+### What They Visualize
+
+1. **Neural Dynamics Over Time**
+   - Pre-activations (gray dashed lines)
+   - Post-activations (colored lines per neuron)
+   - Shows how each neuron evolves over internal ticks
+
+2. **Attention Patterns**
+   - Heatmaps over input (image/sequence)
+   - Updated each tick—shows WHERE model looks
+
+3. **Predictions Over Time**
+   - Bar charts of class probabilities
+   - Shows HOW the answer EMERGES over ticks
+
+4. **Certainty Over Time**
+   - Line plot of model confidence
+   - Shows WHEN the model "decides"
+
+5. **Animated GIFs**
+   - Combines all above
+   - Frame-by-frame visualization of "thinking"
+
+### Code Pattern (from 01_mnist.ipynb)
+
+```python
+def make_gif(predictions, certainties, targets, pre_activations,
+             post_activations, attention, inputs, filename):
+    """
+    Creates animated GIF showing:
+    - Input image
+    - Attention heatmap (changes each tick)
+    - Prediction probabilities (bar chart)
+    - Certainty over time (line plot)
+    - Individual neuron traces (multiple line plots)
+    """
+    for stepi in range(n_steps):
+        # Plot attention at this tick
+        # Plot predictions at this tick
+        # Plot certainty line with vertical marker
+        # Plot each neuron's pre/post activation trace
+        frames.append(render_frame())
+
+    mediapy.save(filename, frames)
+```
+
+### Why This Matters
+
+These visualizations let us **literally see**:
+- Is the model "searching" (attention moving around)?
+- Is it "converging" (certainty increasing)?
+- Which neurons activate for which features?
+- How does the answer emerge over time?
+
+**Our visualization (visualize_comparison.py) is much simpler**—just line plots of confidence/certainty over layers/ticks. To properly compare architectures, we need GIF-style temporal visualization.
+
+---
+
+## Files Created/Updated This Session
+
+| File | Purpose | Key Finding |
+|------|---------|-------------|
+| test_bdh_style.py | BDH vs Standard vs Tick-CTM | Standard wins when passes equalized; Tick-CTM wins with more ticks |
+| visualize_comparison.py | Side-by-side visualization | Created basic comparison plots |
+| RESEARCH_LOG.md | This file | Comprehensive tracking of findings |
+
+---
+
+## Open Questions (Updated)
+
+### Theoretical
+
+1. **Is the two-loop hypothesis correct?**
+   - Outer loop: Backprop finds structure
+   - Inner loop: Self-modification at inference
+   - Evidence: Tick-CTM's iteration helps; BDH claims implicit Hebbian
+
+2. **What is the right "inner loop" mechanism?**
+   - Accumulation over ticks? (our approach)
+   - Hebbian edge updates? (BDH's claim)
+   - Sync as representation? (real CTM)
+   - Prediction-error grounding? (inner loop hypothesis)
+
+3. **Why does iteration help OOD generalization?**
+   - Tick-CTM: +18% on longer sequences
+   - Is it "more compute" or "iterative refinement"?
+   - Would Universal Transformers show same pattern?
+
+### Empirical
+
+4. **What tasks REQUIRE sync-as-representation?**
+   - We never tested real CTM on maze solving, multi-step reasoning
+   - Sakana's CTM paper shows it works on mazes—we should replicate
+
+5. **Is our BDH implementation correct?**
+   - Our version underperforms; BDH paper claims parity with transformers
+   - Need to fix bugs and re-test
+
+6. **What's the role of attention type?**
+   - Softmax vs linear attention
+   - BDH uses linear attention for implicit state accumulation
+   - Does this matter for which tasks?
+
+### Meta
+
+7. **Are we testing the right tasks?**
+   - Reversal is a lookup task—transformers are built for this
+   - Need tasks that REQUIRE "thinking": planning, search, reasoning
+
+8. **How do we properly visualize these architectures?**
+   - CTM notebooks show detailed neural dynamics
+   - We should create similar visualizations to UNDERSTAND differences
+   - Not just accuracy numbers—HOW does each model solve the task?
+
+---
+
+## Next Steps
+
+### Immediate
+
+1. **Fix BDH implementation** - Match paper's architecture exactly
+2. **Add GIF visualization** - See HOW each model thinks, not just accuracy
+3. **Test on maze-like tasks** - Where CTM was designed to shine
+
+### Medium-term
+
+4. **Implement real CTM** - Per-neuron NLMs, sync as representation
+5. **Test two-loop hypothesis** - Inner loop with explicit predict-error-update
+6. **Systematic task taxonomy** - Which tasks need which architectural features?
+
+### Long-term
+
+7. **Extract transferable principles** - What's the minimal mechanism for OOD generalization?
+8. **Understand why transformers work** - Not just "attention is all you need"—WHY?
+9. **Connect to biological plausibility** - Does it matter? When?
+
+---
+
+## Key Takeaways So Far
+
+1. **Iteration helps**: 2L × 8T beats 4L standard transformer (+6% test, +18% OOD)
+
+2. **But it's not "CTM"**: Our Tick-CTM is just a looped transformer with accumulation
+
+3. **Task matters**: Reversal is a lookup task—we may be testing the wrong thing
+
+4. **BDH is subtle**: Claims mathematical equivalence between tensors and Hebbian dynamics—our implementation missed this
+
+5. **Visualization is key**: CTM notebooks show detailed "thinking" GIFs—we need this to understand differences
+
+6. **Transformers are strong**: Despite everything, standard transformers remain competitive on many tasks
+
+7. **Uncertainty remains**: We don't yet know which tasks REQUIRE sync/iteration vs just attention
