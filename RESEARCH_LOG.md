@@ -420,6 +420,29 @@ Multiple attention passes allow:
 
 Novel combinations benefit because the model can iteratively figure out how components relate, rather than pattern-matching in one shot.
 
+### Comprehensive Analysis (comprehensive_multipass_analysis.py)
+
+**Q1: Does multi-pass generalize across tasks?**
+- Helps on compositional tasks with sufficient data (+17.6%)
+- Neutral/hurts on simple tasks (copy, counting)
+- Data size matters: 104 examples → helps; 8 examples → hurts
+
+**Q2: What changes between passes?**
+- Representation change: 5.7 → 1.9 (CONVERGING)
+- Prediction accuracy: 7% → 86% (IMPROVING)
+- This IS iterative refinement
+
+**Q3: Connection to intelligence loop**
+```
+Intelligence Loop: Predict → Feedback → Update
+Multi-Pass:        Predict → [Attention] → Refine
+```
+
+Multi-pass provides IMPLICIT feedback via attention:
+- Each pass sees all updated representations
+- If position A changes, position B notices on next pass
+- No explicit error needed - attention IS the feedback mechanism
+
 ---
 
 ## Updated Files
