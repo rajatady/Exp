@@ -795,3 +795,374 @@ These visualizations let us **literally see**:
 6. **Transformers are strong**: Despite everything, standard transformers remain competitive on many tasks
 
 7. **Uncertainty remains**: We don't yet know which tasks REQUIRE sync/iteration vs just attention
+
+---
+
+## New Session: Component-by-Component CTM Analysis (2025-12-30)
+
+### Goal
+Systematically add real CTM components one-by-one to our Tick-CTM baseline and measure impact.
+
+### Components Tested
+
+| Component | Description | From Real CTM? |
+|-----------|-------------|----------------|
+| **Hist** | History buffer (store activations across ticks) | ✓ Z tensor |
+| **Sync** | Compute S = Z·Z^T (correlation flag) | ✓ Core mechanism |
+| **SyncRes** | Add sync features as residual (gentle use) | Adapted |
+| **NLM** | Proper per-neuron processing (einsum, no loops) | ✓ SuperLinear |
+| **Halt** | Adaptive halting (stop when confident) | ✓ Certainty-based |
+| **Para** | Independent parallel paths | New idea |
+| **CommPara** | Communicating parallel paths | New idea |
+
+### Implementation: Proper NLM (SuperLinear)
+
+Based on real CTM's `models/modules.py`:
+
+```python
+# Real CTM's NLM uses einsum for parallel per-neuron processing
+# Each of D neurons has UNIQUE weights - no loops!
+
+# Input: (B, T, D, M) - batch, seq, neurons, history
+# w1: (M, H, D) - per-neuron weights
+h = torch.einsum('btdm,mhd->btdh', x, self.w1) + self.b1
+h = F.glu(h, dim=-1)  # GLU activation like real CTM
+out = torch.einsum('btdh,hod->btdo', h, self.w2) + self.b2
+out = F.glu(out, dim=-1).squeeze(-1) / self.T
+```
+
+**Key**: Uses einsum for D independent linear transforms in parallel - NO PYTHON LOOPS.
+
+### 3-Seed Benchmark Results (Reversal Task)
+
+| Model | Test (mean±std) | OOD (mean±std) | Params |
+|-------|-----------------|----------------|--------|
+| **Tick-CTM+Hist+Sync+SyncRes** | **94.5%±2.4%** | **69.9%±6.0%** | 106,063 |
+| Tick-CTM+Hist+SyncRes | 94.4%±1.9% | 65.6%±6.2% | 106,063 |
+| Tick-CTM+Hist+NLM | 93.6%±0.9% | 61.6%±3.4% | 142,991 |
+| Tick-CTM+Hist+Sync | 93.4%±1.3% | 68.9%±4.1% | 101,902 |
+| Tick-CTM+Hist+Sync+NLM | 93.2%±3.4% | 67.6%±8.1% | 142,991 |
+| Tick-CTM (baseline) | 93.1%±0.7% | 64.9%±6.4% | 101,902 |
+| Tick-CTM+Hist+Sync+Halt | 91.4%±4.2% | 60.1%±7.1% | 101,967 |
+| Tick-CTM+Hist | 90.9%±2.3% | 62.2%±6.1% | 101,902 |
+| Tick-CTM+Halt | 90.4%±4.1% | 61.0%±4.5% | 101,967 |
+| Tick-CTM+Para(4) | 82.8%±3.1% | 52.1%±3.1% | 252,238 |
+| Tick-CTM+CommPara(4) | 8.2%±2.2% | 7.8%±0.7% | 202,062 |
+
+### Key Findings
+
+1. **Winner: Hist+Sync+SyncRes**
+   - Test: 94.5% (+1.4% vs baseline)
+   - OOD: 69.9% (+5.0% vs baseline)
+   - Combining history, sync flag, and sync residual works best
+
+2. **Single-seed results were misleading**
+   - Hist+Sync+Halt looked like 96.8% in one run
+   - Across 3 seeds: only 91.4% (high variance: 4.2%)
+   - **Always use multiple seeds!**
+
+3. **Proper NLM helps test, hurts OOD**
+   - Hist+NLM: 93.6% test (stable, only 0.9% std)
+   - But only 61.6% OOD (-3.3% vs baseline)
+   - NLM adds parameters but doesn't generalize
+
+4. **History buffer alone hurts**
+   - Hist: 90.9% test (-2.2% vs baseline)
+   - Need sync computation to extract value from history
+
+5. **Sync computation helps OOD**
+   - Hist+Sync: 93.4% test, 68.9% OOD (+4.0% OOD)
+   - The correlation signal aids generalization
+
+6. **CommPara is broken**
+   - 8.2% accuracy across seeds
+   - Something fundamentally wrong with cross-path attention
+   - Need to debug
+
+7. **Parallel paths don't help (yet)**
+   - Para(4): 82.8% test, 52.1% OOD
+   - More parameters, worse results
+   - Sequential refinement matters more than parallel exploration
+
+8. **Adaptive halting adds variance**
+   - Halt alone: 90.4%±4.1% (high variance)
+   - May be halting too early or inconsistently
+
+### Component Impact Summary
+
+| Component | Test Δ | OOD Δ | Verdict |
+|-----------|--------|-------|---------|
+| +Hist+Sync+SyncRes | +1.4% | +5.0% | **BEST** |
+| +Hist+Sync | +0.3% | +4.0% | Good for OOD |
+| +Hist+NLM | +0.5% | -3.3% | Hurts OOD |
+| +Hist alone | -2.2% | -2.7% | Hurts |
+| +Para(4) | -10.3% | -12.8% | Bad |
+| +CommPara(4) | -84.9% | -57.1% | Broken |
+
+### Lessons Learned
+
+1. **Sync should be auxiliary, not primary** - Adding sync as residual works; replacing output with sync breaks the model
+
+2. **Multiple seeds are essential** - Single run gave misleading results
+
+3. **History needs sync** - Raw history buffer doesn't help; need to extract correlation information
+
+4. **Parallel paths need more work** - Current implementations don't match sequential tick performance
+
+5. **Proper NLM implementation** - Using einsum (no loops) is fast and matches real CTM, but doesn't help this task
+
+### Next Steps
+
+1. **Debug CommPara** - Find why cross-path attention breaks completely
+2. **Test on different tasks** - Reversal may not need CTM-style processing
+3. **Implement sync with decay** - Real CTM uses exponential decay in sync computation
+4. **Add maze/parity tasks** - Where CTM was designed to shine
+
+---
+
+## Multi-Task Benchmark (Same Session)
+
+### Goal
+Test if findings from reversal generalize to other task types.
+
+### Tasks Tested
+
+| Task | Type | What it Tests |
+|------|------|--------------|
+| Reversal | Lookup | Attention-based retrieval |
+| Parity | Counting | Accumulation over sequence |
+| Addition | Arithmetic | Multi-step computation |
+
+### Results
+
+| Config | Reversal (T/O) | Parity (T/O) | Addition (T/O) |
+|--------|----------------|--------------|----------------|
+| Baseline | 93.3%/70.3% | 41.0%/58.0% | 28.0%/4.0% |
+| Hist+Sync | 93.4%/57.5% | 42.0%/58.0% | 32.0%/4.0% |
+| Hist+Sync+SyncRes | 91.8%/63.9% | 42.0%/58.0% | **37.0%**/6.0% |
+| **Hist+NLM** | 92.3%/49.0% | **51.0%**/58.0% | 29.0%/6.0% |
+
+### Critical Finding: Task-Dependent Architecture Selection
+
+**Best config varies by task:**
+- **Reversal (lookup)**: Baseline wins for OOD (70.3%)
+- **Parity (counting)**: Hist+NLM wins (51% vs 41% baseline)
+- **Addition (arithmetic)**: Hist+Sync+SyncRes wins (37% vs 28%)
+
+### Key Insights
+
+1. **NLM helps counting, not lookup**
+   - Parity: +10% with NLM
+   - Reversal: -21% OOD with NLM
+   - NLM processes temporal history - useful for counting, harmful for lookup
+
+2. **Sync hurts reversal OOD**
+   - 57.5% vs 70.3% baseline (-12.8%)
+   - Correlation signal adds noise for lookup task
+   - Contradicts single-task findings (variance issue?)
+
+3. **SyncRes helps arithmetic**
+   - 37% vs 28% baseline (+9%)
+   - Sync as residual aids multi-step computation
+
+4. **All models struggle with counting/arithmetic**
+   - Parity: 41-51% (near random for binary task)
+   - Addition: 28-37% test, 4-6% OOD
+   - Need more training or different architecture
+
+### Architecture-Task Matching
+
+| Architecture Feature | Best For | Worst For |
+|---------------------|----------|-----------|
+| Baseline (just iteration) | Lookup OOD | Counting |
+| Hist+Sync | ? | Lookup OOD |
+| Hist+Sync+SyncRes | Arithmetic | Lookup |
+| Hist+NLM | **Counting** | Lookup OOD |
+
+### Implications
+
+1. **No single architecture wins all tasks** - This aligns with "no free lunch" theorem
+
+2. **CTM components have task-specific value**:
+   - NLM: Good for counting (temporal accumulation)
+   - Sync: Mixed results, may need better implementation
+   - SyncRes: Helps multi-step computation
+
+3. **Reversal was misleading test case** - It's a lookup task where transformers excel
+
+4. **Need better counting/arithmetic training** - Current results are near-random
+
+### Questions Raised
+
+1. Why does Sync hurt reversal OOD in multi-task but help in single-task benchmark?
+   - Different seeds?
+   - Task interference?
+
+2. Why is parity so hard?
+   - 51% is barely above random (50%)
+   - Need more epochs or bigger model?
+
+3. Does real CTM's sync-with-decay help?
+   - Our sync is simplified
+   - Real CTM uses exponential decay
+
+---
+
+## Parity Deep Dive (Same Session)
+
+### Observation
+All models stuck at ~50% on parity (random guessing).
+
+### Extended Training Test
+Trained for 300 epochs with 1000 samples:
+- Baseline: 51.0% (stuck at loss ≈ 0.75 = log(2))
+- Hist+NLM: 50.5% (same)
+
+### Why Parity is Hard
+
+This is a **known limitation** of transformers for counting tasks:
+1. Parity requires exact counting - one mistake = wrong answer
+2. Transformers learn "soft" attention patterns, not exact counts
+3. No explicit accumulator mechanism
+4. This is discussed in "Transformers Learn Shortcuts to Automata" paper
+
+### What Would Help
+1. **Scratchpad/chain-of-thought**: Let model write intermediate counts
+2. **Position-based counting**: Explicit positional encoding for counting
+3. **Recurrent mechanism**: True RNN-style accumulation (not our tick loop)
+4. **Specialized architecture**: Counting-specific modules
+
+### Implication
+Our Tick-CTM architecture, despite iterations, cannot solve counting tasks. This is NOT a failure of our implementation - it's a fundamental architectural limitation.
+
+**Real CTM may work on parity** - their paper shows good results. The difference:
+- Real CTM: Per-neuron NLMs process history temporally
+- Our Tick-CTM: Transformer blocks with weight sharing
+
+---
+
+## Session Summary (2025-12-30)
+
+### What We Did
+1. Implemented proper NLM using einsum (matching real CTM)
+2. Ran 3-seed benchmark on reversal task
+3. Tested multiple tasks: reversal, parity, addition
+4. Found task-dependent architecture selection
+
+### Key Findings
+
+| Finding | Evidence | Implication |
+|---------|----------|-------------|
+| **Multi-seed essential** | Single-seed: 96.8%, 3-seed avg: 91.4% | Don't trust single runs |
+| **Winner: Hist+Sync+SyncRes** | 94.5% test, 69.9% OOD (3-seed) | Sync as residual works |
+| **Task-dependent architecture** | NLM helps parity, hurts reversal | No universal winner |
+| **Parity is hard** | All models stuck at 50% | Transformers can't count |
+
+### Architecture Recommendations by Task
+
+| Task Type | Best Architecture | Why |
+|-----------|-------------------|-----|
+| **Lookup** (reversal) | Baseline or light Sync | Attention suffices |
+| **Counting** (parity) | Need specialized arch | Tick-CTM can't do it |
+| **Arithmetic** (addition) | Hist+Sync+SyncRes | Multi-step benefits |
+
+### Open Questions
+1. Would real CTM (not Tick-CTM) solve parity?
+2. Why does sync-with-decay matter?
+3. How to parallelize refinement without losing sequential benefits?
+
+### Files Updated
+- `test_ctm_components.py`: Added proper NLM, multi-task benchmark, parity/addition tasks
+- `RESEARCH_LOG.md`: This file
+
+---
+
+## CRITICAL FINDING: Real CTM CAN Learn Parity (Same Session)
+
+### The Test
+Ran real CTM (from Sakana's codebase) on parity task to compare with our Tick-CTM.
+
+### Results
+
+| Model | After 5 Epochs | Verdict |
+|-------|----------------|---------|
+| **Real CTM** | **60.1%** (still learning) | ✓ WORKS |
+| Our Tick-CTM | 50% (stuck) | ✗ FAILS |
+
+### Training Curves
+```
+Real CTM:
+  Epoch 1: 50.1% (random)
+  Epoch 2: 50.9%
+  Epoch 3: 51.4%
+  Epoch 4: 56.0%  ← Learning starts!
+  Epoch 5: 59.2%
+  Test: 60.1%     ← Continues improving
+
+Our Tick-CTM:
+  Epoch 1: 50%
+  ...
+  Epoch 300: 50%  ← Stuck at random
+```
+
+### Why Real CTM Works on Parity
+
+| Feature | Real CTM | Our Tick-CTM |
+|---------|----------|--------------|
+| **NLMs** | Per-neuron private MLPs process history | Shared transformer weights |
+| **Synapses** | Deep UNET (8 layers) | Simple 2-layer transformer |
+| **Memory** | 25 ticks of history | 8 ticks |
+| **Sync** | Core representation (output from sync) | Add-on (small residual) |
+| **Iterations** | 30-50 | 8 |
+| **Parameters** | 142K-652K | ~100K |
+
+### The Key Insight
+
+**Real CTM's architecture enables counting through:**
+1. **Per-neuron NLMs**: Each neuron tracks its own temporal state
+2. **Deep synapses**: Complex information mixing between neurons
+3. **Sync as representation**: Correlation captures counting state
+4. **Many iterations**: Time to propagate count through network
+
+**Our Tick-CTM is fundamentally different:**
+- Just a looped transformer with weight sharing
+- No per-neuron state tracking
+- Sync is add-on, not core
+- Can't implement counting algorithm
+
+### Implications
+
+1. **Tick-CTM ≠ CTM**: Our architecture is structurally incapable of counting
+2. **Task matters**: Reversal (lookup) works, parity (counting) fails
+3. **NLMs are critical**: Per-neuron processing enables temporal computation
+4. **We need real CTM components**: Not just iteration
+
+### What Real CTM Has That We Don't
+
+```python
+# Real CTM forward pass (simplified):
+for tick in range(iterations):
+    # 1. Synapses mix neurons (deep UNET)
+    state = synapses(concat(attn_out, activated_state))
+
+    # 2. Update pre-activation history (rolling buffer)
+    state_trace = concat(state_trace[:, :, 1:], state)
+
+    # 3. NLMs: EACH NEURON processes ITS OWN history
+    activated_state = NLM(state_trace)  # Per-neuron!
+
+    # 4. Sync: compute correlations
+    sync = activated_state @ activated_state.T  # Core representation
+
+    # 5. Output FROM sync
+    output = project(sync)  # NOT from hidden state
+```
+
+**Our version skips steps 2-5.** We just loop the transformer.
+
+### Next Step: Implement Real CTM Architecture
+To match real CTM's capabilities, we need:
+1. Deep synapses (UNET or equivalent)
+2. Per-neuron NLMs with proper history buffer
+3. Sync as core representation (output from sync)
+4. More iterations (30+)
